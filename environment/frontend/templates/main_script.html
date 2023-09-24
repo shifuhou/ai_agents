@@ -1,0 +1,427 @@
+{% load static %}
+
+<div id="step" style="display:none">{{step}}</div>
+<div id="sim_code" style="display:none">{{sim_code}}</div>
+<div id="persona_name_list" style="display:none">{{persona_name_str}}</div>
+<div id="persona_init_pos" style="display:none">
+	
+	{% for i in persona_init_pos %}
+		<span>{{i.0}},{{i.1}},{{i.2}}</span>
+	{% endfor %}
+</div>
+
+<div id="new_persona_names_set" style="display:none">
+	
+	{% for i in new_persona_names_set %}
+		<span>{{i}}</span>
+	{% endfor %}
+</div>
+
+<script type="text/javascript">
+	/*
+	  Main resources: 
+	  https://www.youtube.com/watch?v=cKIG1lKwLeo&t=401s&ab_channel=HongLy
+	  For the ground zero code, see the exported files from here: 
+	  https://codepen.io/mikewesthad/pen/BVeoYP?editors=1111 
+
+	  Also worth taking a look: 
+	  https://www.youtube.com/watch?v=fdXcD9X4NrQ&ab_channel=MorganPage
+	  and 
+	  https://www.youtube.com/watch?v=MR2CvWxOEsw&ab_channel=MattWilber
+	 */
+
+	// ###########################################################################
+	// PREAMBLE
+	// ###########################################################################
+
+	// <step> -- one full loop around all three phases determined by <phase> is 
+	// a step. We use this to link the steps in the backend. 
+	let step = parseInt(document.getElementById('step').innerHTML);
+	let sim_code = document.getElementById('sim_code').innerHTML;
+	let spans = document.getElementById('persona_init_pos').getElementsByTagName('span');
+
+	let persona_names = {};
+
+	
+	for(var i = 0, l = spans.length; i < l; i++){
+		let x = spans[i].innerText.split(",");
+		persona_names[x[0]] = [parseInt(x[1]), parseInt(x[2])]
+	}
+	let spans2 = document.getElementById('new_persona_names_set').getElementsByTagName('span');
+
+
+	// convert to js dic
+	
+	let new_persona_names_list = {};
+	for(var i = 0, l = spans2.length; i < l; i++){
+		let x = spans2[i].innerText.split(",");
+		new_persona_names_list[x[0]] = x
+	}
+
+	
+
+	
+	// Phaser 3.0 global settings. 
+	// Configuration meant to be passed to the main Phaser game instance. 
+	const config = {
+	  type: Phaser.AUTO,
+	  width: 1200,
+	  height: 800,
+	  parent: "game-container",
+	  pixelArt: true,
+	  physics: {
+	    default: "arcade",
+	    arcade: {
+	      gravity: { y: 0 } } },
+	  scene: {
+	    preload: preload,
+	    create: create,
+	    update: update } };
+
+
+
+	// Creating the game instance and setting up the main Phaser variables that  
+	// will be used in it. 
+	const game = new Phaser.Game(config);
+	let cursors;
+	let player;
+	let showDebug = false;
+
+	// Persona related variables. This should have the name of the persona as its 
+	// keys, and the instances of the Persona class as the values.
+	var spawn_tile_loc = {};
+
+
+	for (var key in persona_names){
+		spawn_tile_loc[key] = persona_names[key] ;
+	}
+
+
+	var personas = {};
+	var new_personas = {};
+	var pronunciatios = {};
+
+	let anims_direction;
+	let pre_anims_direction;
+	let pre_anims_direction_dict = {};
+
+	let curr_maze = "the_ville";
+
+	// <tile_width> is the width of one individual tile (tiles are square)
+	let tile_width = 32;
+	// Important: tile_width % movement_speed has to be 0. 
+	// <movement_speed> determines how fast we move at each upate cylce. 
+	let movement_speed = 32; 
+
+	// <timer_max> determines how frequently our update function will query the 
+	// frontend server. If it's higher, we wait longer cycles. 
+	let timer_max = 0;
+	let timer = timer_max;
+
+	// <phase> -- there are three phases: "process," "update," and "execute."
+	let phase = "update"; // or "update" or "execute"
+	var selectedPerson =""
+	// Variables for storing movements that are sent from the backend server.
+	let execute_movement;
+	let execute_count_max = tile_width/movement_speed;
+	let execute_count = execute_count_max;
+	let movement_target = {};
+
+	var dropdown = document.getElementById("personaDropdown");
+    var play_context;
+
+	// ###########################################################################
+	// ENGINE
+	// ###########################################################################
+	dropdown.addEventListener("change", function() {
+			selectedPerson = this.value;
+			// 在此处执行其他操作，例如使用选中的键
+			console.log("Selected key:", selectedPerson);
+		});
+
+	function add_new() {  
+		var name = prompt("Name:");
+			if (name) {
+				alert("Hi, " + name + "!");
+			}
+
+		let randomName = Object.keys(new_persona_names_list)[Math.floor(Math.random() * Object.keys(new_persona_names_list).length)];
+
+		
+		let new_sprite = play_context.physics.add
+							.sprite(2500, 1000, randomName, "down")
+							.setSize(30, 40)
+							.setOffset(0, 0); 
+
+		new_sprite.scale = 1.5;
+		
+		// this.physics.add.collider(player, collisionsLayer);
+		// play_context.physics.add.collider(new_sprite, collisionsLayer);
+		new_personas[name] = {'name': new_sprite,
+							  'appearance': randomName};
+		var option = document.createElement("option");
+		option.style = "font-size:3.0em"
+		option.value = name;
+		option.textContent = name;
+		dropdown.appendChild(option);
+
+		selectedPerson = name;
+		
+	}  
+
+	add_button.onclick = function(){
+		add_new();
+	};
+
+	function askForName() {
+		var name = prompt("请输入你的名字:");
+		if (name) {
+			alert("你好, " + name + "!");
+    }
+}
+	
+	function move_persona(curr_persona_name, direction){
+		var moveDirections = {
+			"up": [0, -1],
+			"left": [-1, 0],
+			"right": [1, 0],
+			"down": [0, 1],
+		};
+		let [dx, dy] = moveDirections[direction];
+		console.log(movement_speed)
+		// console.log(new_personas[curr_persona_name].body.x , dx*movement_speed)
+
+
+		let targetX = new_personas[curr_persona_name]['name'].x + dx * movement_speed;
+    	let targetY = new_personas[curr_persona_name]['name'].y + dy * movement_speed;
+		// new_personas[curr_persona_name].body.x += dx*movement_speed;
+		// new_personas[curr_persona_name].body.y += dy*movement_speed;
+		play_context.tweens.add({
+			targets: new_personas[curr_persona_name]['name'],
+			x: targetX,
+			y: targetY,
+			duration: 1000,  // 可以调整这个时间来改变移动速度
+			ease: 'Linear', 
+			onComplete: function() {
+				new_personas[curr_persona_name]['name'].anims.stop();
+			}
+		});
+		
+		// new_personas[curr_persona_name].body.setVelocity(dx * movement_speed, dy * movement_speed);
+		// console.log(new_personas[curr_persona_name].body.x , dx*movement_speed)
+
+		console.log(new_personas[curr_persona_name]['appearance'])
+		if (direction == "left") {
+			let animskey = new_personas[curr_persona_name]['appearance'] + "-left-walk";
+			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+		} else if (direction == "right") {
+			let animskey = new_personas[curr_persona_name]['appearance'] + "-right-walk";
+			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+		} else if (direction == "up") {
+			let animskey = new_personas[curr_persona_name]['appearance'] + "-up-walk";
+			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+		} else if (direction == "down") {
+			let animskey = new_personas[curr_persona_name]['appearance'] + "-down-walk";
+			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+		} else {
+			new_personas[curr_persona_name]['name'].anims.stop();
+		};
+	}
+
+	document.querySelector(".direction-buttons").addEventListener("click", function(event) {
+	if (event.target.classList.contains("button")) {
+		let direction = event.target.classList[1];
+		console.log(direction);
+
+		console.log("Selected key:", selectedPerson);
+		move_persona(selectedPerson, direction);
+	}
+	});
+
+
+	function preload() {  
+	  // Loading the necessary images (e.g., the background image, character 
+	  // sprites). 
+
+	  // Joon: for load.image, the first parameter is simply the key value that
+	  //       you are passing in. The second parameter should be pointed to the
+	  //       png file that contains the tileset. 
+	  //       Also IMPORTANT: when you create a tileset in Tiled, always be  
+	  //       sure to check the "embedded" option. 
+	  this.load.image("blocks_1", "{% static 'assets/the_ville/visuals/map_assets/blocks/blocks_1.png' %}");
+	  this.load.image("walls", "{% static 'assets/the_ville/visuals/map_assets/v1/Room_Builder_32x32.png' %}");
+	  this.load.image("interiors_pt1", "{% static 'assets/the_ville/visuals/map_assets/v1/interiors_pt1.png' %}");
+	  this.load.image("interiors_pt2", "{% static 'assets/the_ville/visuals/map_assets/v1/interiors_pt2.png' %}");
+	//   this.load.image("interiors_pt3", "{% static 'assets/the_ville/visuals/map_assets/v1/interiors_pt3.png' %}");
+	  this.load.image("interiors_pt4", "{% static 'assets/the_ville/visuals/map_assets/v1/interiors_pt4.png' %}");
+	  this.load.image("interiors_pt5", "{% static 'assets/the_ville/visuals/map_assets/v1/interiors_pt5.png' %}");
+	  this.load.image("CuteRPG_Field_B", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Field_B.png' %}");
+	  this.load.image("CuteRPG_Field_C", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Field_C.png' %}");
+	  this.load.image("CuteRPG_Harbor_C", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Harbor_C.png' %}");
+	  this.load.image("CuteRPG_Village_B", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Village_B.png' %}");
+	  this.load.image("CuteRPG_Forest_B", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Forest_B.png' %}");
+	  this.load.image("CuteRPG_Desert_C", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Desert_C.png' %}");
+	  this.load.image("CuteRPG_Mountains_B", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Mountains_B.png' %}");
+	  this.load.image("CuteRPG_Desert_B", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Desert_B.png' %}");
+	  this.load.image("CuteRPG_Forest_C", "{% static 'assets/the_ville/visuals/map_assets/cute_rpg_word_VXAce/tilesets/CuteRPG_Forest_C.png' %}");
+
+	  // Joon: This is the export json file you get from Tiled. 
+	  this.load.tilemapTiledJSON("map", "{% static 'assets/the_ville/visuals/the_ville_hsf.json' %}");
+
+	  // An atlas is a way to pack multiple images together into one texture. I'm 
+	  // using it to load all the player animations (walking left, walking right, 
+	  // etc.) in one image. For more info see:
+	  // https://labs.phaser.io/view.html?src=src/animation/texture%20atlas%20animation.js
+	  // If you don't use an atlas, you can do the same thing with a spritesheet, 
+	  // see: https://labs.phaser.io/view.html?src=src/animation/single%20sprite%20sheet.js
+	  // Joon: Technically, I think this guy had the best tutorial for atlas: 
+	  //       https://www.youtube.com/watch?v=fdXcD9X4NrQ&ab_channel=MorganPage
+	  this.load.atlas("atlas", 
+	                  "https://mikewesthad.github.io/phaser-3-tilemap-blog-posts/post-1/assets/atlas/atlas.png", 
+	                  "https://mikewesthad.github.io/phaser-3-tilemap-blog-posts/post-1/assets/atlas/atlas.json");
+
+	  var basePath = "{% static 'assets/characters/' %}";	
+	  for (let i=0; i<Object.keys(new_persona_names_list).length; i++){
+
+		var imageUrl = basePath + Object.keys(new_persona_names_list)[i] + ".png";
+		this.load.atlas(Object.keys(new_persona_names_list)[i], 
+						imageUrl, 
+	                  "{% static 'assets/characters/atlas.json' %}");
+	  }
+	  
+	}
+
+	function create() {  
+		const map = this.make.tilemap({ key: "map" });
+		// Joon: Logging map is really helpful for debugging here: 
+		//       console.log(map);
+
+		// The first parameter is the name you gave to the tileset in Tiled and then
+		// the key of the tileset image in Phaser's cache (i.e. the name you used in
+		// preload)
+		// Joon: for the first parameter here, really take a look at the 
+		//       console.log(map) output. You need to make sure that the name 
+		//       matches.
+		const collisions = map.addTilesetImage("blocks", "blocks_1");
+		const walls = map.addTilesetImage("Room_Builder_32x32", "walls");
+		const interiors_pt1 = map.addTilesetImage("interiors_pt1", "interiors_pt1");
+		const interiors_pt2 = map.addTilesetImage("interiors_pt2", "interiors_pt2");
+		const interiors_pt4 = map.addTilesetImage("interiors_pt4", "interiors_pt4");
+		const interiors_pt5 = map.addTilesetImage("interiors_pt5", "interiors_pt5");
+		const CuteRPG_Field_B = map.addTilesetImage("CuteRPG_Field_B", "CuteRPG_Field_B");
+		const CuteRPG_Field_C = map.addTilesetImage("CuteRPG_Field_C", "CuteRPG_Field_C");
+		const CuteRPG_Harbor_C = map.addTilesetImage("CuteRPG_Harbor_C", "CuteRPG_Harbor_C");
+		const CuteRPG_Village_B = map.addTilesetImage("CuteRPG_Village_B", "CuteRPG_Village_B");
+		const CuteRPG_Forest_B = map.addTilesetImage("CuteRPG_Forest_B", "CuteRPG_Forest_B");
+		const CuteRPG_Desert_C = map.addTilesetImage("CuteRPG_Desert_C", "CuteRPG_Desert_C");
+		const CuteRPG_Mountains_B = map.addTilesetImage("CuteRPG_Mountains_B", "CuteRPG_Mountains_B");
+		const CuteRPG_Desert_B = map.addTilesetImage("CuteRPG_Desert_B", "CuteRPG_Desert_B");
+		const CuteRPG_Forest_C = map.addTilesetImage("CuteRPG_Forest_C", "CuteRPG_Forest_C");
+
+		// The first parameter is the layer name (or index) taken from Tiled, the 
+		// second parameter is the tileset you set above, and the final two 
+		// parameters are the x, y coordinate. 
+		// Joon: The "layer name" that comes as the first parameter value  
+		//       literally is taken from our Tiled layer name. So to find out what
+		//       they are; you actually need to open up tiled and see how you 
+		//       named things there. 
+		let tileset_group_1 = [CuteRPG_Field_B, CuteRPG_Field_C, CuteRPG_Harbor_C, CuteRPG_Village_B, 
+													CuteRPG_Forest_B, CuteRPG_Desert_C, CuteRPG_Mountains_B, CuteRPG_Desert_B, CuteRPG_Forest_C,
+													interiors_pt1, interiors_pt2, interiors_pt4, interiors_pt5, walls];
+
+		const bottomGroundLayer = map.createLayer("Bottom Ground", tileset_group_1, 0, 0);
+		const exteriorGroundLayer = map.createLayer("Exterior Ground", tileset_group_1, 0, 0);
+		const exteriorDecorationL1Layer = map.createLayer("Exterior Decoration L1", tileset_group_1, 0, 0);
+		const exteriorDecorationL2Layer = map.createLayer("Exterior Decoration L2", tileset_group_1, 0, 0);
+		const interiorGroundLayer = map.createLayer("Interior Ground", tileset_group_1, 0, 0);
+		const wallLayer = map.createLayer("Wall", [CuteRPG_Field_C, walls], 0, 0);
+		const interiorFurnitureL1Layer = map.createLayer("Interior Furniture L1", tileset_group_1, 0, 0);
+		const interiorFurnitureL2Layer = map.createLayer("Interior Furniture L2 ", tileset_group_1, 0, 0);
+		const foregroundL1Layer = map.createLayer("Foreground L1", tileset_group_1, 0, 0);
+		const foregroundL2Layer = map.createLayer("Foreground L2", tileset_group_1, 0, 0);
+		foregroundL1Layer.setDepth(2);
+		foregroundL2Layer.setDepth(2);
+		// wallLayer.setDepth(2);
+
+		const collisionsLayer = map.createLayer("Collisions", collisions, 0, 0);
+
+		collisionsLayer.setCollisionByProperty({ collides: true });
+
+		collisionsLayer.setDepth(-1);
+
+
+		// *** SET UP CAMERA *** 
+		player = this.physics.add.
+					sprite(2500, 688, "atlas", "misa-front").
+					setSize(30, 40).
+					setOffset(0, 32);
+		player.setDepth(-1);
+		// Setting up the camera. 
+		const camera = this.cameras.main;
+		camera.startFollow(player);
+		camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+		cursors = this.input.keyboard.createCursorKeys();
+
+	  // Create the player's walking animations from the texture atlas. These are
+	  // stored in the global animation manager so any sprite can access them.  
+	  	const anims = this.anims;
+	    let dirlist = ["left-walk","right-walk","up-walk","down-walk"];	
+		for (let i=0; i<Object.keys(new_persona_names_list).length; i++){
+			for (let j=0; j<4; j++){
+				let animskey = Object.keys(new_persona_names_list)[i] +"-" + dirlist[j];
+				let prefixkey = dirlist[j] + '.'
+				anims.create({
+				key: animskey,
+				frames: anims.generateFrameNames(Object.keys(new_persona_names_list)[i] , { prefix: prefixkey, start: 0, end: 3, zeroPad: 3 }),
+				frameRate: 4,
+				repeat: -1 });
+			}
+		}
+		
+		play_context = this;
+		
+	}
+
+	function update(time, delta) {
+		// 
+	  // *** MOVE CAMERA *** 
+	  // This is where we finish up the camera setting we started in the create() 
+	  // function. We set the movement speed of the camera and wire up the keys to
+	  // map to the actual movement.
+	  const camera_speed = 400;
+	  // Stop any previous movement from the last frame
+	  player.body.setVelocity(0);
+	  if (cursors.left.isDown) {
+	    player.body.setVelocityX(-camera_speed);
+	  } 
+	  if (cursors.right.isDown) {
+	    player.body.setVelocityX(camera_speed);
+	  } 
+	  if (cursors.up.isDown) {
+	    player.body.setVelocityY(-camera_speed);
+	  } 
+	  if (cursors.down.isDown) {
+	    player.body.setVelocityY(camera_speed);
+	  }
+
+	  
+	  if (phase == "process") {
+
+	  } 
+
+	  else if (phase == "update") { 
+	    
+	  } 
+
+	  
+	}
+
+
+</script>
+
+
+
+
+
+
+

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+  <title>Reverie</title>
+  <!-- Latest compiled and minified CSS -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+	<!-- Optional theme -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap-theme.min.css" integrity="sha384-6pzBo3FDv/PJ8r2KRkGHifhEocL+1X2rVCTTkUfGk7/0pbek5mMa1upzvWbrUbOZ" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/style.css' %}">
+</head>
+
+			
+		
+<body class="top-navigation" style="background-color: white">
+	<br>
+	<br>
+	<div>
+		
+
+		<div id="game-container" style="text-align: center "></div>
+
+
+		
+		
+		<div class="layout-container">
+			<div class="left-section">
+				<button id="add_button" type="button" class="btn btn-default">
+					<strong style=" font-size:1.2em"> &nbsp;ADD_PERSONA</strong>
+				</button>
+				<br>
+				<br>
+				<select id="personaDropdown"></select>
+				<br>
+				<br>
+				<div id = "dir_button" class="direction-buttons">
+					<button class="button up-left">↖</button>
+					<button class="button up">↑</button>
+					<button class="button up-right">↗</button>
+					
+					<button class="button left">←</button>
+					<div></div> <!-- 空中间部分 -->
+					<button class="button right">→</button>
+					
+					<button class="button down-left">↙</button>
+					<button class="button down">↓</button>
+					<button class="button down-right">↘</button>
+				</div>
+			</div>
+			<div class="right-section">
+				<h3 style="margin-bottom:-0.5em; font-size:1.5em">Current Time:</h3>
+				<div class="row">
+					<div class="col-md-8" id="game-time">
+						<h2><span id="game-time-content"></span></h2> 
+					</div>
+				</div>
+
+				<br>
+				<hr style="border-color:#999999">
+				<br>
+
+				
+
+
+
+
+				
+
+			</div>
+		</div>
+	</div>
+
+	
+
+
+
+	<div style="padding-bottom:15em"> </div>
+
+
+	<!-- partial -->
+	<script src='https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js'></script>
+	{% include 'main_script.html' %}
+	<script type="text/javascript" id="clustrmaps" src="//clustrmaps.com/map_v2.js?d=Xha1v8a6ENHDAgZ2dJoH85LCl6H1VwpYfgwfbgau8r4&cl=ffffff&w=a"></script>
+	<style type="text/css">
+		#clustrmaps-widget-v2 {
+			display: none !important
+		}
+	</style>
+</body>
+</html>
+
