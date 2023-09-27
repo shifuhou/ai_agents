@@ -2,13 +2,14 @@
 
 <div id="step" style="display:none">{{step}}</div>
 <div id="sim_code" style="display:none">{{sim_code}}</div>
-<div id="persona_name_list" style="display:none">{{persona_name_str}}</div>
-<div id="persona_init_pos" style="display:none">
+
+<!-- <div id="persona_init_pos" style="display:none">
 	
 	{% for i in persona_init_pos %}
 		<span>{{i.0}},{{i.1}},{{i.2}}</span>
 	{% endfor %}
-</div>
+</div> -->
+
 
 <div id="new_persona_names_set" style="display:none">
 	
@@ -17,7 +18,17 @@
 	{% endfor %}
 </div>
 
-<script type="text/javascript">
+<script src="static/qwebchannel.js"></script> 
+	
+<script type="text/javascript" >
+
+	// new QWebChannel(qt.webChannelTransport, function (channel) {
+	// 	window.MyObject = channel.objects.myObject;
+	// });
+	var persona_names = JSON.parse('{{ persona_names|safe }}');
+
+	
+
 	/*
 	  Main resources: 
 	  https://www.youtube.com/watch?v=cKIG1lKwLeo&t=401s&ab_channel=HongLy
@@ -38,20 +49,10 @@
 	// a step. We use this to link the steps in the backend. 
 	let step = parseInt(document.getElementById('step').innerHTML);
 	let sim_code = document.getElementById('sim_code').innerHTML;
-	let spans = document.getElementById('persona_init_pos').getElementsByTagName('span');
-
-	let persona_names = {};
-
-	
-	for(var i = 0, l = spans.length; i < l; i++){
-		let x = spans[i].innerText.split(",");
-		persona_names[x[0]] = [parseInt(x[1]), parseInt(x[2])]
-	}
+	// let spans = document.getElementById('persona_init_pos').getElementsByTagName('span');
 	let spans2 = document.getElementById('new_persona_names_set').getElementsByTagName('span');
-
-
 	// convert to js dic
-	
+	var is_start = true;
 	let new_persona_names_list = {};
 	for(var i = 0, l = spans2.length; i < l; i++){
 		let x = spans2[i].innerText.split(",");
@@ -89,17 +90,11 @@
 
 	// Persona related variables. This should have the name of the persona as its 
 	// keys, and the instances of the Persona class as the values.
-	var spawn_tile_loc = {};
 
 
-	for (var key in persona_names){
-		spawn_tile_loc[key] = persona_names[key] ;
-	}
-
-
-	var personas = {};
-	var new_personas = {};
+	var personas = {}
 	var pronunciatios = {};
+	var collisionsLayer;
 
 	let anims_direction;
 	let pre_anims_direction;
@@ -112,12 +107,18 @@
 	// Important: tile_width % movement_speed has to be 0. 
 	// <movement_speed> determines how fast we move at each upate cylce. 
 	let movement_speed = 32; 
-
+	var update_time = 0;	
+	var update_time_2 = 0;
 	// <timer_max> determines how frequently our update function will query the 
 	// frontend server. If it's higher, we wait longer cycles. 
 	let timer_max = 0;
 	let timer = timer_max;
-
+	var moveDirections = {
+			"up": [0, -1],
+			"left": [-1, 0],
+			"right": [1, 0],
+			"down": [0, 1],
+		};
 	// <phase> -- there are three phases: "process," "update," and "execute."
 	let phase = "update"; // or "update" or "execute"
 	var selectedPerson =""
@@ -138,103 +139,155 @@
 			// 在此处执行其他操作，例如使用选中的键
 			console.log("Selected key:", selectedPerson);
 		});
+	
+	function check_space(x,y){
+		for (let i=0; i<Object.keys(personas).length;i++){
+			let name = Object.keys(personas)[i];
 
+			if (Math.abs(personas[name].body.x-x)<32 && Math.abs(personas[name].body.y-y)<32){
+				return false;
+			}
+		}
+		return true;
+	}
 	function add_new() {  
 		var name = prompt("Name:");
 			if (name) {
-				alert("Hi, " + name + "!");
+				if (name in personas){
+					alert("already exist");
+					return ;
+				}
 			}
+		
 
 		let randomName = Object.keys(new_persona_names_list)[Math.floor(Math.random() * Object.keys(new_persona_names_list).length)];
 
+		let start_pos_x = 2500;
+		let start_pos_y = 1100;
 		
+		while (!check_space(start_pos_x,start_pos_y)){
+			start_pos_x-=32;
+		}
 		let new_sprite = play_context.physics.add
-							.sprite(2500, 1000, randomName, "down")
+							.sprite(start_pos_x, start_pos_y, randomName, "down")
 							.setSize(30, 40)
 							.setOffset(0, 0); 
 
-		new_sprite.scale = 1.5;
+		// new_sprite.scale = 1.5;
 		
-		// this.physics.add.collider(player, collisionsLayer);
-		// play_context.physics.add.collider(new_sprite, collisionsLayer);
-		new_personas[name] = {'name': new_sprite,
-							  'appearance': randomName};
+		// play_context.physics.add.collider(player, collisionsLayer);
+		play_context.physics.add.collider(new_sprite, collisionsLayer);
+		personas[name] =  new_sprite;
 		var option = document.createElement("option");
 		option.style = "font-size:3.0em"
 		option.value = name;
 		option.textContent = name;
 		dropdown.appendChild(option);
 
+		let new_persona_json ={};
+		new_persona_json['name'] = name;
+		new_persona_json['appearance'] = randomName;
+		new_persona_json['x'] = start_pos_x;
+		new_persona_json['y'] = start_pos_y;
+		new_persona_json['target_x'] = start_pos_x;
+		new_persona_json['target_y'] = start_pos_y;
+		new_persona_json['direction'] = 'stop'
+
+
+		fetch('/new_persona/', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(new_persona_json)
+		})
+		.then(response => response.json())
+		.then(data => console.log(data))
+		.catch((error) => console.error('Error:', error));
+
 		selectedPerson = name;
+
+
 		
 	}  
 
 	add_button.onclick = function(){
 		add_new();
 	};
-
-	function askForName() {
-		var name = prompt("请输入你的名字:");
-		if (name) {
-			alert("你好, " + name + "!");
-    }
-}
 	
-	function move_persona(curr_persona_name, direction){
-		var moveDirections = {
-			"up": [0, -1],
-			"left": [-1, 0],
-			"right": [1, 0],
-			"down": [0, 1],
-		};
-		let [dx, dy] = moveDirections[direction];
-		console.log(movement_speed)
-		// console.log(new_personas[curr_persona_name].body.x , dx*movement_speed)
-
-
-		let targetX = new_personas[curr_persona_name]['name'].x + dx * movement_speed;
-    	let targetY = new_personas[curr_persona_name]['name'].y + dy * movement_speed;
-		// new_personas[curr_persona_name].body.x += dx*movement_speed;
-		// new_personas[curr_persona_name].body.y += dy*movement_speed;
-		play_context.tweens.add({
-			targets: new_personas[curr_persona_name]['name'],
-			x: targetX,
-			y: targetY,
-			duration: 1000,  // 可以调整这个时间来改变移动速度
-			ease: 'Linear', 
-			onComplete: function() {
-				new_personas[curr_persona_name]['name'].anims.stop();
-			}
-		});
+	function move_persona(curr_persona_name, direction, targetX, targetY , update){
 		
-		// new_personas[curr_persona_name].body.setVelocity(dx * movement_speed, dy * movement_speed);
-		// console.log(new_personas[curr_persona_name].body.x , dx*movement_speed)
+		console.log('===================')
+		console.log(curr_persona_name, direction, targetX, targetY , update)
+		
+		let [dx, dy] = moveDirections[direction];
 
-		console.log(new_personas[curr_persona_name]['appearance'])
+		// let targetX = personas[curr_persona_name].body.x + dx * movement_speed;
+    	// let targetY = personas[curr_persona_name].body.y + dy * movement_speed;
+
+		
+
+		personas[curr_persona_name].body.setVelocity(dx * movement_speed, dy * movement_speed);
+
+
 		if (direction == "left") {
-			let animskey = new_personas[curr_persona_name]['appearance'] + "-left-walk";
-			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+			let animskey = persona_names[curr_persona_name]['appearance'] + "-left-walk";
+			personas[curr_persona_name].anims.play(animskey, true);
 		} else if (direction == "right") {
-			let animskey = new_personas[curr_persona_name]['appearance'] + "-right-walk";
-			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+			let animskey = persona_names[curr_persona_name]['appearance'] + "-right-walk";
+			personas[curr_persona_name].anims.play(animskey, true);
 		} else if (direction == "up") {
-			let animskey = new_personas[curr_persona_name]['appearance'] + "-up-walk";
-			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+			let animskey = persona_names[curr_persona_name]['appearance'] + "-up-walk";
+			personas[curr_persona_name].anims.play(animskey, true);
 		} else if (direction == "down") {
-			let animskey = new_personas[curr_persona_name]['appearance'] + "-down-walk";
-			new_personas[curr_persona_name]['name'].anims.play(animskey, true);
+			let animskey = persona_names[curr_persona_name]['appearance'] + "-down-walk";
+			personas[curr_persona_name].anims.play(animskey, true);
 		} else {
-			new_personas[curr_persona_name]['name'].anims.stop();
+			personas[curr_persona_name].anims.stop();
 		};
+
+		if (update){
+			persona_names[curr_persona_name]['target_x'] = targetX;
+			persona_names[curr_persona_name]['target_y'] = targetY;
+			persona_names[curr_persona_name]['direction'] = direction;
+			let new_persona_json ={};
+			new_persona_json['name'] = curr_persona_name;
+			new_persona_json['appearance'] = persona_names[curr_persona_name]['appearance'];
+			new_persona_json['x'] = personas[curr_persona_name].body.x;
+			new_persona_json['y'] = personas[curr_persona_name].body.y;
+			new_persona_json['target_x'] = targetX;
+			new_persona_json['target_y'] = targetY;
+			new_persona_json['direction'] = direction
+
+
+			fetch('/move/', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(new_persona_json)
+			})
+			.then(response => response.json())
+			.then(data => console.log(data))
+			.catch((error) => console.error('Error:', error));
+		}
+
 	}
 
 	document.querySelector(".direction-buttons").addEventListener("click", function(event) {
 	if (event.target.classList.contains("button")) {
 		let direction = event.target.classList[1];
-		console.log(direction);
+
 
 		console.log("Selected key:", selectedPerson);
-		move_persona(selectedPerson, direction);
+
+		let [dx, dy] = moveDirections[direction];
+
+		let targetX = personas[selectedPerson].body.x + dx * movement_speed;
+    	let targetY = personas[selectedPerson].body.y + dy * movement_speed;
+
+		move_persona(selectedPerson, direction, targetX ,targetY ,  true);
+
 	}
 	});
 
@@ -291,7 +344,40 @@
 	  
 	}
 
+
+	function showInfoPanel(sprite) {
+		const padding = 10;
+    
+		// 准备文本内容
+		let content = 'Sprite Info:\n' + 'x: ' + sprite.x.toFixed(2) + ', y: ' + sprite.y.toFixed(2);
+		let infoText = play_context.add.text(0, 0, content, { fontSize: '16px', fill: '#000000' });
+		
+		let x = infoText.width /2  + 32
+		let y = infoText.height /2  + 32
+		// 使用图形对象作为背景
+		let bgWidth = infoText.width + padding * 2;
+		let bgHeight = infoText.height + padding * 2;
+
+		let infoBg = play_context.add.graphics()
+						.fillStyle(0xffffff)
+						.fillRect(sprite.x - bgWidth/2 + x, sprite.y - bgHeight/2 -y, bgWidth, bgHeight);
+
+		infoText.destroy();				
+		infoText = play_context.add.text(0, 0, content, { fontSize: '16px', fill: '#000000' });
+
+
+		// 调整文本对象的位置使其居中于背景上
+		infoText.setPosition(sprite.x - infoText.width/2 + x, sprite.y - infoText.height/2 - y);
+
+		// 如果你需要在一段时间后自动隐藏信息面板，可以使用以下代码：
+		play_context.time.delayedCall(3000, function() {  // 3秒后隐藏
+			infoText.destroy();
+			infoBg.destroy();
+		}, [], play_context);
+	}
+
 	function create() {  
+		play_context = this;
 		const map = this.make.tilemap({ key: "map" });
 		// Joon: Logging map is really helpful for debugging here: 
 		//       console.log(map);
@@ -343,18 +429,18 @@
 		foregroundL2Layer.setDepth(2);
 		// wallLayer.setDepth(2);
 
-		const collisionsLayer = map.createLayer("Collisions", collisions, 0, 0);
+		collisionsLayer = map.createLayer("Collisions", collisions, 0, 0);
 
 		collisionsLayer.setCollisionByProperty({ collides: true });
 
-		collisionsLayer.setDepth(-1);
+		collisionsLayer.setDepth(3);
 
 
 		// *** SET UP CAMERA *** 
 		player = this.physics.add.
-					sprite(2500, 688, "atlas", "misa-front").
+					sprite(2500, 1100, "atlas", "misa-front").
 					setSize(30, 40).
-					setOffset(0, 32);
+					setOffset(0, 0);
 		player.setDepth(-1);
 		// Setting up the camera. 
 		const camera = this.cameras.main;
@@ -377,17 +463,89 @@
 				repeat: -1 });
 			}
 		}
+		console.log(persona_names)
+		for (let i=0; i<Object.keys(persona_names).length;i++){
+			
+
+			let name = Object.keys(persona_names)[i]
+			let appearance = persona_names[Object.keys(persona_names)[i]]['appearance']
+			let x = persona_names[Object.keys(persona_names)[i]]['x']
+			let y = persona_names[Object.keys(persona_names)[i]]['y']
+			let sprite = play_context.physics.add
+								.sprite(x, y, appearance, "down")
+								.setSize(0, 0)
+								.setOffset(0, 0); 
+			sprite.setInteractive();
+			// 添加点击事件
+			sprite.on('pointerdown', function() {
+				console.log('Sprite clicked!');
+
+				showInfoPanel(sprite);
+			});	
+
+			// play_context.physics.add.collider(sprite, collisionsLayer);
+			personas[name] = {}
+			personas[name] = sprite
+
+			
+			var option = document.createElement("option");
+			option.style = "font-size:3.0em"
+			option.value = name;
+			option.textContent = name;
+			dropdown.appendChild(option);
+			selectedPerson = name;
+		}
+
+
+
+		function callPythonFunction(x, y) {
+			
+			dict = {'persona_x':personas[selectedPerson].body.x , 'persona_y':personas[selectedPerson].body.y ,'x':x ,'y': y}
+			console.log(typeof(dict))
+			if (window.pyqtObject) {
+				window.pyqtObject.on_js_function_called(JSON.stringify(dict));
+			} else {
+				console.error("PyQt Object not initialized yet.");
+			}
+		}
+
 		
-		play_context = this;
+
+		this.input.on('pointerdown', function(pointer) {
+			let worldX = pointer.x + player.body.x - 600;
+			let worldY = pointer.y + player.body.y - 400;
+			console.log('X:', pointer.x, 'Y:', pointer.y);
+			console.log('World X:', worldX, ' World Y:', worldY);
+			callPythonFunction(worldX, worldY);
+			// callPython("Hello from JS!");
+		}, this);
 		
+		
+		if (window.pyqtObject) {
+			window.pyqtObject.on_js_send_selected_persona(selectedPerson);
+		} else {
+			console.error("PyQt Object not initialized yet.");
+		}
 	}
 
+	
 	function update(time, delta) {
 		// 
 	  // *** MOVE CAMERA *** 
 	  // This is where we finish up the camera setting we started in the create() 
 	  // function. We set the movement speed of the camera and wire up the keys to
 	  // map to the actual movement.
+	  if (is_start){
+		
+		if (window.pyqtObject) {
+				window.pyqtObject.on_js_send_selected_persona(selectedPerson);
+				is_start = false;
+			} 
+			// else {
+			// 	console.error("PyQt Object not initialized yet.");
+			// }
+		}
+
 	  const camera_speed = 400;
 	  // Stop any previous movement from the last frame
 	  player.body.setVelocity(0);
@@ -404,14 +562,155 @@
 	    player.body.setVelocityY(camera_speed);
 	  }
 
+
+	  // update persona_names
+	  if (time - update_time > 555) {
+
+		
+		update_time = time
+		fetch('/update_persona/')
+		.then(response => {
+			if (!response.ok) {
+				console.log(response)
+				throw new Error('Network response was not ok');
+			}
+			return response.json();
+		})
+		.then(data => {
+			
+			persona_names = data;
+			for (let i=0; i<Object.keys(persona_names).length; i++){
+				let name = Object.keys(persona_names)[i];
+				if (!(name in personas)){
+					
+					let appearance = persona_names[name]['appearance']
+					let x = persona_names[name]['x']
+					let y = persona_names[name]['y']
+					let sprite = play_context.physics.add
+										.sprite(x, y, appearance, "down")
+										.setSize(0, 0)
+										.setOffset(0, 0); 
+					sprite.setInteractive();
+					// 添加点击事件
+					sprite.on('pointerdown', function() {
+						// 这里你可以做其他的操作，例如弹出一个信息面板
+						showInfoPanel(mySprite);
+					});	
+
+					// play_context.physics.add.collider(sprite, collisionsLayer);
+					personas[name] = {}
+					personas[name] = sprite
+					
+					var option = document.createElement("option");
+					option.style = "font-size:3.0em"
+					option.value = name;
+					option.textContent = name;
+					dropdown.appendChild(option);
+					
+				}
+
+				if (persona_names[name]['direction'] != 'stop')	{
+					let [dx, dy] = moveDirections[persona_names[name]['direction']];
+					let targetX = personas[name].body.x + dx * movement_speed;
+					let targetY = personas[name].body.y + dy * movement_speed;
+					personas[name].body.setVelocity(dx * movement_speed, dy * movement_speed);
+
+					if (persona_names[name]['direction'] == "left") {
+						let animskey = persona_names[name]['appearance'] + "-left-walk";
+						personas[name].anims.play(animskey, true);
+					} else if (persona_names[name]['direction'] == "right") {
+						let animskey = persona_names[name]['appearance'] + "-right-walk";
+						personas[name].anims.play(animskey, true);
+					} else if (persona_names[name]['direction'] == "up") {
+						let animskey = persona_names[name]['appearance'] + "-up-walk";
+						personas[name].anims.play(animskey, true);
+					} else if (persona_names[name]['direction'] == "down") {
+						let animskey = persona_names[name]['appearance'] + "-down-walk";
+						personas[name].anims.play(animskey, true);
+					} else {
+						personas[name].anims.stop();
+					};
+					
+				}
+			}
+
+		})
+		.catch((error) => {
+			console.log(data);
+			console.error('Error:', error);
+		});
+	  }
+
+
+	  // check whether arrive
+	  function check_arrive(name){
+		let therhold =0.5;
+
+		if (persona_names[name]['direction'] == 'stop') { return true; }
+
+
+		
+		if (persona_names[name]['direction'] == 'right'){
+			if (personas[name].body.x > persona_names[name]['target_x'] - therhold) { return true; }
+		}
+		if (persona_names[name]['direction'] == 'left'){
+			if (personas[name].body.x < persona_names[name]['target_x'] + therhold) { return true; }
+		}
+		if (persona_names[name]['direction'] == 'up'){
+			if (personas[name].body.y < persona_names[name]['target_y'] + therhold) { return true; }
+		}
+		if (persona_names[name]['direction'] == 'down'){
+			if (personas[name].body.y > persona_names[name]['target_y'] - therhold) { return true; }
+		}
+		return false;
+
+	  }
+
+	  if (time -update_time_2 >100){
+		update_time_2 = time;
+		for (let i=0; i<Object.keys(persona_names).length; i++){
+			name = Object.keys(persona_names)[i];
+
+			if (personas[name].body.velocity.x !=0 ||personas[name].body.velocity.y !=0)
+			{
+
+				// console.log(name)
+				// console.log(persona_names[name]['target_x'], persona_names[name]['target_y'])
+				// console.log(personas[name].body.x,personas[name].body.y)
+				if (check_arrive(name)){
+
+					personas[name].setVelocity(0,0);
+					personas[name].body.x = persona_names[name]['target_x'];
+					personas[name].body.y = persona_names[name]['target_y'];
+
+					if (name == selectedPerson) {
+						let new_persona_json = persona_names[name];
+						persona_names[name]['direction'] = 'stop';
+						fetch('/move/', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify(new_persona_json)
+						})
+						.then(response => response.json())
+						.then(data => {
+							if (window.pyqtObject) {
+								window.pyqtObject.on_js_arrived('arrived');
+							} else {
+								console.error("PyQt Object not initialized yet.");
+							}
+						})
+						.catch((error) => console.error('Error:', error));
+
+						
+					}
+				}
+			}
+		}
+	  }
 	  
-	  if (phase == "process") {
-
-	  } 
-
-	  else if (phase == "update") { 
-	    
-	  } 
+	  
 
 	  
 	}

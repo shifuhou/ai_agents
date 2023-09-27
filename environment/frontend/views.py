@@ -4,16 +4,32 @@ import random
 import json
 from os import listdir
 import os
-
 import datetime
 from django.shortcuts import render, redirect, HttpResponseRedirect
 from django.http import HttpResponse, JsonResponse
 from global_methods import *
 
+import sqlite3
+
+
 
 from .models import *
 
+
+
 def home(request):
+  
+  
+  conn = sqlite3.connect('aiagents_database.db')
+  cursor = conn.cursor()
+  cursor.execute('''
+    CREATE TABLE IF NOT EXISTS personas (
+        id TEXT PRIMARY KEY,
+        jsfile TEXT NOT NULL,
+        date_posted DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+  conn.commit()
   f_curr_sim_code = "temp_storage/curr_sim_code.json"
   f_curr_step = "temp_storage/curr_step.json"
 
@@ -38,36 +54,89 @@ def home(request):
           x = x[:-4]
           new_persona_names_set.append(x)
 
-  persona_names = []
-  persona_names_set = set()
-  for i in find_filenames(f"storage/{sim_code}/personas", ""): 
-    x = i.split("/")[-1].strip()
-    if x[0] != ".": 
-      persona_names += [[x, x.replace(" ", "_")]]
-      persona_names_set.add(x)
+  
 
-  persona_init_pos = []
-  file_count = []
-  for i in find_filenames(f"storage/{sim_code}/environment", ".json"):
-    x = i.split("/")[-1].strip()
-    if x[0] != ".": 
-      file_count += [int(x.split(".")[0])]
-  curr_json = f'storage/{sim_code}/environment/{str(max(file_count))}.json'
 
-  with open(curr_json) as json_file:  
-    persona_init_pos_dict = json.load(json_file)
-    for key, val in persona_init_pos_dict.items(): 
-      if key in persona_names_set: 
-        persona_init_pos += [[key, val["x"], val["y"]]]
+  persona_names = {}
+  cursor.execute("SELECT * FROM personas")
+  rows = cursor.fetchall()
+  for row in rows:
 
+    persona = json.loads(row[1])
+    persona_names[persona['name']] = persona
+  # for i in find_filenames(f"environment/data/personas", ".json"):
+  #   x = i.split("/")[-1].strip()
+  #   if x[0] != ".":
+  #     x = x[:-4]
+  #     with open(i) as json_file: 
+  #       persona = json.load(json_file)
+  #       persona_names[persona['name']] = persona
+
+
+  # print(persona_names)
   context = {"sim_code": sim_code,
              "step": step, 
-             "persona_names": persona_names,
-             "persona_init_pos": persona_init_pos,
+             "persona_names": json.dumps(persona_names),
              'new_persona_names_set':new_persona_names_set,
              "mode": "simulate"}
   template = "home.html"
   return render(request, template, context)
+
+def move(request):
+  data = json.loads(request.body)
+  conn = sqlite3.connect('aiagents_database.db')
+  cursor = conn.cursor()
+  cursor.execute("UPDATE personas SET jsfile=? WHERE id=?", (json.dumps(data), data['name']))
+  conn.commit()
+  # with open(f"environment/data/personas/{data['name']}.json", 'w') as file:
+  #   json.dump(data,file,indent=4)
+  res = {
+      "message": "received"
+  }
+  return JsonResponse(res)
+
+def update_persona(request):
+  persona_names = {}
+  conn = sqlite3.connect('aiagents_database.db')
+  cursor = conn.cursor()
+  cursor.execute("SELECT * FROM personas")
+  rows = cursor.fetchall()
+  for row in rows:
+    persona = json.loads(row[1])
+    persona_names[persona['name']] = persona
+
+  # for i in find_filenames(f"environment/data/personas", ".json"):
+  #   x = i.split("/")[-1].strip()
+  #   if x[0] != ".":
+  #     x = x[:-4]
+  #     with open(i) as json_file: 
+  #       try:
+  #         persona = json.load(json_file)
+  #         persona_names[persona['name']] = persona
+  #       except:
+  #         print(json_file)
+  #         lines = json_file.read()
+  #         print(lines)
+
+  return JsonResponse(persona_names)
+
+def new_persona(request):
+
+  data = json.loads(request.body)
+
+  conn = sqlite3.connect('aiagents_database.db')
+  cursor = conn.cursor()
+  cursor.execute("INSERT INTO personas (id, jsfile) VALUES (?, ?)", (data['name'] , json.dumps(data) ))
+  conn.commit()
+  # with open(f"environment/data/personas/{data['name']}.json", 'w') as file:
+  #   json.dump(data,file,indent=4)
+  # print(data)
+
+  res = {
+        "message": "received"
+    }
+  return JsonResponse(res)
+
 
 def process_environment(request): 
   """
@@ -126,8 +195,6 @@ def update_environment(request):
   return JsonResponse(response_data)
 
 
-def add_persona(request):
-  return 
 
 def landing(request): 
   context = {}

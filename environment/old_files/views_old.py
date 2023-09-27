@@ -13,7 +13,6 @@ import datetime
 from django.shortcuts import render, redirect, HttpResponseRedirect
 from django.http import HttpResponse, JsonResponse
 from global_methods import *
-
 from django.contrib.staticfiles.templatetags.staticfiles import static
 from .models import *
 

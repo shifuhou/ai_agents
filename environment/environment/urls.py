@@ -24,6 +24,9 @@ from frontend import views
 
 urlpatterns = [
     re_path(r'^$', views.home, name='home'),
+    re_path(r'^new_persona/$', views.new_persona, name='new_persona'),
+    re_path(r'^move/$', views.move, name='move'),
+    re_path(r'^update_persona/$', views.update_persona, name='update_persona'),
     re_path(r'^process_environment/$', views.process_environment, name='process_environment'),
     re_path(r'^update_environment/$', views.update_environment, name='update_environment'),
     
